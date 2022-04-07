@@ -283,6 +283,16 @@ func (r *Router) NewRoute() *Route {
 	return route
 }
 
+// NewRoute registers an empty route.
+func (r *Router) RemoveRoute(name string) {
+	for i, v := range r.routes {
+		if v.name == name {
+			r.routes = append(r.routes[:i], r.routes[i+1:]...)
+			break
+		}
+	}
+}
+
 // Name registers a new route with a name.
 // See Route.Name().
 func (r *Router) Name(name string) *Route {
