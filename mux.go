@@ -168,6 +168,10 @@ func (r *Router) Match(req *http.Request, match *RouteMatch) bool {
 	return false
 }
 
+type Ippem int
+
+var Ipkey Ippem = 1
+
 // ServeHTTP dispatches the handler registered in the matched route.
 //
 // When there is a match, the route variables can be retrieved calling
@@ -208,8 +212,9 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if handler == nil {
 		handler = http.NotFoundHandler()
 	}
-
-	handler.ServeHTTP(w, req)
+	ctx := req.Context()
+	ctx = context.WithValue(ctx, Ipkey, req.RemoteAddr)
+	handler.ServeHTTP(w, req.WithContext(ctx))
 }
 
 // Get returns a route registered with the given name.
