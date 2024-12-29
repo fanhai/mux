@@ -1,3 +1,3 @@
-module github.com/gorilla/mux
+module github.com/fanhai/mux
 
 go 1.20
