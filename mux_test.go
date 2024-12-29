@@ -10,7 +10,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -58,7 +59,7 @@ func TestHost(t *testing.T) {
 			title:       "Host route match",
 			route:       new(Route).Host("aaa.bbb.ccc"),
 			request:     newRequest("GET", "http://aaa.bbb.ccc/111/222/333"),
-			vars:        map[string]string{},
+			vars:        nil,
 			host:        "aaa.bbb.ccc",
 			path:        "",
 			shouldMatch: true,
@@ -67,7 +68,7 @@ func TestHost(t *testing.T) {
 			title:       "Host route, wrong host in request URL",
 			route:       new(Route).Host("aaa.bbb.ccc"),
 			request:     newRequest("GET", "http://aaa.222.ccc/111/222/333"),
-			vars:        map[string]string{},
+			vars:        nil,
 			host:        "aaa.bbb.ccc",
 			path:        "",
 			shouldMatch: false,
@@ -76,7 +77,7 @@ func TestHost(t *testing.T) {
 			title:       "Host route with port, match",
 			route:       new(Route).Host("aaa.bbb.ccc:1234"),
 			request:     newRequest("GET", "http://aaa.bbb.ccc:1234/111/222/333"),
-			vars:        map[string]string{},
+			vars:        nil,
 			host:        "aaa.bbb.ccc:1234",
 			path:        "",
 			shouldMatch: true,
@@ -85,7 +86,7 @@ func TestHost(t *testing.T) {
 			title:       "Host route with port, wrong port in request URL",
 			route:       new(Route).Host("aaa.bbb.ccc:1234"),
 			request:     newRequest("GET", "http://aaa.bbb.ccc:9999/111/222/333"),
-			vars:        map[string]string{},
+			vars:        nil,
 			host:        "aaa.bbb.ccc:1234",
 			path:        "",
 			shouldMatch: false,
@@ -94,7 +95,7 @@ func TestHost(t *testing.T) {
 			title:       "Host route, match with host in request header",
 			route:       new(Route).Host("aaa.bbb.ccc"),
 			request:     newRequestHost("GET", "/111/222/333", "aaa.bbb.ccc"),
-			vars:        map[string]string{},
+			vars:        nil,
 			host:        "aaa.bbb.ccc",
 			path:        "",
 			shouldMatch: true,
@@ -103,7 +104,7 @@ func TestHost(t *testing.T) {
 			title:       "Host route, wrong host in request header",
 			route:       new(Route).Host("aaa.bbb.ccc"),
 			request:     newRequestHost("GET", "/111/222/333", "aaa.222.ccc"),
-			vars:        map[string]string{},
+			vars:        nil,
 			host:        "aaa.bbb.ccc",
 			path:        "",
 			shouldMatch: false,
@@ -112,7 +113,7 @@ func TestHost(t *testing.T) {
 			title:       "Host route with port, match with request header",
 			route:       new(Route).Host("aaa.bbb.ccc:1234"),
 			request:     newRequestHost("GET", "/111/222/333", "aaa.bbb.ccc:1234"),
-			vars:        map[string]string{},
+			vars:        nil,
 			host:        "aaa.bbb.ccc:1234",
 			path:        "",
 			shouldMatch: true,
@@ -121,7 +122,7 @@ func TestHost(t *testing.T) {
 			title:       "Host route with port, wrong host in request header",
 			route:       new(Route).Host("aaa.bbb.ccc:1234"),
 			request:     newRequestHost("GET", "/111/222/333", "aaa.bbb.ccc:9999"),
-			vars:        map[string]string{},
+			vars:        nil,
 			host:        "aaa.bbb.ccc:1234",
 			path:        "",
 			shouldMatch: false,
@@ -231,7 +232,7 @@ func TestPath(t *testing.T) {
 			title:       "Path route, match",
 			route:       new(Route).Path("/111/222/333"),
 			request:     newRequest("GET", "http://localhost/111/222/333"),
-			vars:        map[string]string{},
+			vars:        nil,
 			host:        "",
 			path:        "/111/222/333",
 			shouldMatch: true,
@@ -240,7 +241,7 @@ func TestPath(t *testing.T) {
 			title:       "Path route, match with trailing slash in request and path",
 			route:       new(Route).Path("/111/"),
 			request:     newRequest("GET", "http://localhost/111/"),
-			vars:        map[string]string{},
+			vars:        nil,
 			host:        "",
 			path:        "/111/",
 			shouldMatch: true,
@@ -249,7 +250,7 @@ func TestPath(t *testing.T) {
 			title:        "Path route, do not match with trailing slash in path",
 			route:        new(Route).Path("/111/"),
 			request:      newRequest("GET", "http://localhost/111"),
-			vars:         map[string]string{},
+			vars:         nil,
 			host:         "",
 			path:         "/111",
 			pathTemplate: `/111/`,
@@ -260,7 +261,7 @@ func TestPath(t *testing.T) {
 			title:        "Path route, do not match with trailing slash in request",
 			route:        new(Route).Path("/111"),
 			request:      newRequest("GET", "http://localhost/111/"),
-			vars:         map[string]string{},
+			vars:         nil,
 			host:         "",
 			path:         "/111/",
 			pathTemplate: `/111`,
@@ -270,7 +271,7 @@ func TestPath(t *testing.T) {
 			title:        "Path route, match root with no host",
 			route:        new(Route).Path("/"),
 			request:      newRequest("GET", "/"),
-			vars:         map[string]string{},
+			vars:         nil,
 			host:         "",
 			path:         "/",
 			pathTemplate: `/`,
@@ -285,7 +286,7 @@ func TestPath(t *testing.T) {
 				r.RequestURI = "/"
 				return r
 			}(),
-			vars:         map[string]string{},
+			vars:         nil,
 			host:         "",
 			path:         "/",
 			pathTemplate: `/`,
@@ -295,7 +296,7 @@ func TestPath(t *testing.T) {
 			title:       "Path route, wrong path in request in request URL",
 			route:       new(Route).Path("/111/222/333"),
 			request:     newRequest("GET", "http://localhost/1/2/3"),
-			vars:        map[string]string{},
+			vars:        nil,
 			host:        "",
 			path:        "/111/222/333",
 			shouldMatch: false,
@@ -467,7 +468,7 @@ func TestPathPrefix(t *testing.T) {
 			title:       "PathPrefix route, match",
 			route:       new(Route).PathPrefix("/111"),
 			request:     newRequest("GET", "http://localhost/111/222/333"),
-			vars:        map[string]string{},
+			vars:        nil,
 			host:        "",
 			path:        "/111",
 			shouldMatch: true,
@@ -476,7 +477,7 @@ func TestPathPrefix(t *testing.T) {
 			title:       "PathPrefix route, match substring",
 			route:       new(Route).PathPrefix("/1"),
 			request:     newRequest("GET", "http://localhost/111/222/333"),
-			vars:        map[string]string{},
+			vars:        nil,
 			host:        "",
 			path:        "/1",
 			shouldMatch: true,
@@ -485,7 +486,7 @@ func TestPathPrefix(t *testing.T) {
 			title:       "PathPrefix route, URL prefix in request does not match",
 			route:       new(Route).PathPrefix("/111"),
 			request:     newRequest("GET", "http://localhost/1/2/3"),
-			vars:        map[string]string{},
+			vars:        nil,
 			host:        "",
 			path:        "/111",
 			shouldMatch: false,
@@ -547,7 +548,7 @@ func TestSchemeHostPath(t *testing.T) {
 			title:        "Host and Path route, match",
 			route:        new(Route).Host("aaa.bbb.ccc").Path("/111/222/333"),
 			request:      newRequest("GET", "http://aaa.bbb.ccc/111/222/333"),
-			vars:         map[string]string{},
+			vars:         nil,
 			scheme:       "http",
 			host:         "aaa.bbb.ccc",
 			path:         "/111/222/333",
@@ -559,7 +560,7 @@ func TestSchemeHostPath(t *testing.T) {
 			title:        "Scheme, Host, and Path route, match",
 			route:        new(Route).Schemes("https").Host("aaa.bbb.ccc").Path("/111/222/333"),
 			request:      newRequest("GET", "https://aaa.bbb.ccc/111/222/333"),
-			vars:         map[string]string{},
+			vars:         nil,
 			scheme:       "https",
 			host:         "aaa.bbb.ccc",
 			path:         "/111/222/333",
@@ -571,7 +572,7 @@ func TestSchemeHostPath(t *testing.T) {
 			title:        "Host and Path route, wrong host in request URL",
 			route:        new(Route).Host("aaa.bbb.ccc").Path("/111/222/333"),
 			request:      newRequest("GET", "http://aaa.222.ccc/111/222/333"),
-			vars:         map[string]string{},
+			vars:         nil,
 			scheme:       "http",
 			host:         "aaa.bbb.ccc",
 			path:         "/111/222/333",
@@ -668,7 +669,7 @@ func TestHeaders(t *testing.T) {
 			title:       "Headers route, match",
 			route:       new(Route).Headers("foo", "bar", "baz", "ding"),
 			request:     newRequestHeaders("GET", "http://localhost", map[string]string{"foo": "bar", "baz": "ding"}),
-			vars:        map[string]string{},
+			vars:        nil,
 			host:        "",
 			path:        "",
 			shouldMatch: true,
@@ -677,7 +678,7 @@ func TestHeaders(t *testing.T) {
 			title:       "Headers route, bad header values",
 			route:       new(Route).Headers("foo", "bar", "baz", "ding"),
 			request:     newRequestHeaders("GET", "http://localhost", map[string]string{"foo": "bar", "baz": "dong"}),
-			vars:        map[string]string{},
+			vars:        nil,
 			host:        "",
 			path:        "",
 			shouldMatch: false,
@@ -686,7 +687,7 @@ func TestHeaders(t *testing.T) {
 			title:       "Headers route, regex header values to match",
 			route:       new(Route).HeadersRegexp("foo", "ba[zr]"),
 			request:     newRequestHeaders("GET", "http://localhost", map[string]string{"foo": "baw"}),
-			vars:        map[string]string{},
+			vars:        nil,
 			host:        "",
 			path:        "",
 			shouldMatch: false,
@@ -695,7 +696,7 @@ func TestHeaders(t *testing.T) {
 			title:       "Headers route, regex header values to match",
 			route:       new(Route).HeadersRegexp("foo", "ba[zr]"),
 			request:     newRequestHeaders("GET", "http://localhost", map[string]string{"foo": "baz"}),
-			vars:        map[string]string{},
+			vars:        nil,
 			host:        "",
 			path:        "",
 			shouldMatch: true,
@@ -716,7 +717,7 @@ func TestMethods(t *testing.T) {
 			title:       "Methods route, match GET",
 			route:       new(Route).Methods("GET", "POST"),
 			request:     newRequest("GET", "http://localhost"),
-			vars:        map[string]string{},
+			vars:        nil,
 			host:        "",
 			path:        "",
 			methods:     []string{"GET", "POST"},
@@ -726,7 +727,7 @@ func TestMethods(t *testing.T) {
 			title:       "Methods route, match POST",
 			route:       new(Route).Methods("GET", "POST"),
 			request:     newRequest("POST", "http://localhost"),
-			vars:        map[string]string{},
+			vars:        nil,
 			host:        "",
 			path:        "",
 			methods:     []string{"GET", "POST"},
@@ -736,7 +737,7 @@ func TestMethods(t *testing.T) {
 			title:       "Methods route, bad method",
 			route:       new(Route).Methods("GET", "POST"),
 			request:     newRequest("PUT", "http://localhost"),
-			vars:        map[string]string{},
+			vars:        nil,
 			host:        "",
 			path:        "",
 			methods:     []string{"GET", "POST"},
@@ -746,7 +747,7 @@ func TestMethods(t *testing.T) {
 			title:       "Route without methods",
 			route:       new(Route),
 			request:     newRequest("PUT", "http://localhost"),
-			vars:        map[string]string{},
+			vars:        nil,
 			host:        "",
 			path:        "",
 			methods:     []string{},
@@ -769,7 +770,7 @@ func TestQueries(t *testing.T) {
 			title:           "Queries route, match",
 			route:           new(Route).Queries("foo", "bar", "baz", "ding"),
 			request:         newRequest("GET", "http://localhost?foo=bar&baz=ding"),
-			vars:            map[string]string{},
+			vars:            nil,
 			host:            "",
 			path:            "",
 			query:           "foo=bar&baz=ding",
@@ -781,7 +782,7 @@ func TestQueries(t *testing.T) {
 			title:           "Queries route, match with a query string",
 			route:           new(Route).Host("www.example.com").Path("/api").Queries("foo", "bar", "baz", "ding"),
 			request:         newRequest("GET", "http://www.example.com/api?foo=bar&baz=ding"),
-			vars:            map[string]string{},
+			vars:            nil,
 			host:            "",
 			path:            "",
 			query:           "foo=bar&baz=ding",
@@ -795,7 +796,7 @@ func TestQueries(t *testing.T) {
 			title:           "Queries route, match with a query string out of order",
 			route:           new(Route).Host("www.example.com").Path("/api").Queries("foo", "bar", "baz", "ding"),
 			request:         newRequest("GET", "http://www.example.com/api?baz=ding&foo=bar"),
-			vars:            map[string]string{},
+			vars:            nil,
 			host:            "",
 			path:            "",
 			query:           "foo=bar&baz=ding",
@@ -809,7 +810,7 @@ func TestQueries(t *testing.T) {
 			title:           "Queries route, bad query",
 			route:           new(Route).Queries("foo", "bar", "baz", "ding"),
 			request:         newRequest("GET", "http://localhost?foo=bar&baz=dong"),
-			vars:            map[string]string{},
+			vars:            nil,
 			host:            "",
 			path:            "",
 			queriesTemplate: "foo=bar,baz=ding",
@@ -856,7 +857,7 @@ func TestQueries(t *testing.T) {
 			title:           "Queries route with regexp pattern, regexp does not match",
 			route:           new(Route).Queries("foo", "{v1:[0-9]+}"),
 			request:         newRequest("GET", "http://localhost?foo=a"),
-			vars:            map[string]string{},
+			vars:            nil,
 			host:            "",
 			path:            "",
 			queriesTemplate: "foo={v1:[0-9]+}",
@@ -891,7 +892,7 @@ func TestQueries(t *testing.T) {
 			title:           "Queries route with regexp pattern with quantifier, regexp does not match",
 			route:           new(Route).Queries("foo", "{v1:[0-9]{1}}"),
 			request:         newRequest("GET", "http://localhost?foo=12"),
-			vars:            map[string]string{},
+			vars:            nil,
 			host:            "",
 			path:            "",
 			queriesTemplate: "foo={v1:[0-9]{1}}",
@@ -914,7 +915,7 @@ func TestQueries(t *testing.T) {
 			title:           "Queries route with regexp pattern with quantifier, additional variable in query string, regexp does not match",
 			route:           new(Route).Queries("foo", "{v1:[0-9]{1}}"),
 			request:         newRequest("GET", "http://localhost?foo=12"),
-			vars:            map[string]string{},
+			vars:            nil,
 			host:            "",
 			path:            "",
 			queriesTemplate: "foo={v1:[0-9]{1}}",
@@ -973,7 +974,7 @@ func TestQueries(t *testing.T) {
 			title:           "Queries route with empty value, should match",
 			route:           new(Route).Queries("foo", ""),
 			request:         newRequest("GET", "http://localhost?foo=bar"),
-			vars:            map[string]string{},
+			vars:            nil,
 			host:            "",
 			path:            "",
 			query:           "foo=",
@@ -985,7 +986,7 @@ func TestQueries(t *testing.T) {
 			title:           "Queries route with empty value and no parameter in request, should not match",
 			route:           new(Route).Queries("foo", ""),
 			request:         newRequest("GET", "http://localhost"),
-			vars:            map[string]string{},
+			vars:            nil,
 			host:            "",
 			path:            "",
 			queriesTemplate: "foo=",
@@ -996,7 +997,7 @@ func TestQueries(t *testing.T) {
 			title:           "Queries route with empty value and empty parameter in request, should match",
 			route:           new(Route).Queries("foo", ""),
 			request:         newRequest("GET", "http://localhost?foo="),
-			vars:            map[string]string{},
+			vars:            nil,
 			host:            "",
 			path:            "",
 			query:           "foo=",
@@ -1008,7 +1009,7 @@ func TestQueries(t *testing.T) {
 			title:           "Queries route with overlapping value, should not match",
 			route:           new(Route).Queries("foo", "bar"),
 			request:         newRequest("GET", "http://localhost?foo=barfoo"),
-			vars:            map[string]string{},
+			vars:            nil,
 			host:            "",
 			path:            "",
 			queriesTemplate: "foo=bar",
@@ -1019,7 +1020,7 @@ func TestQueries(t *testing.T) {
 			title:           "Queries route with no parameter in request, should not match",
 			route:           new(Route).Queries("foo", "{bar}"),
 			request:         newRequest("GET", "http://localhost"),
-			vars:            map[string]string{},
+			vars:            nil,
 			host:            "",
 			path:            "",
 			queriesTemplate: "foo={bar}",
@@ -1042,7 +1043,7 @@ func TestQueries(t *testing.T) {
 			title:           "Queries route, bad submatch",
 			route:           new(Route).Queries("foo", "bar", "baz", "ding"),
 			request:         newRequest("GET", "http://localhost?fffoo=bar&baz=dingggg"),
-			vars:            map[string]string{},
+			vars:            nil,
 			host:            "",
 			path:            "",
 			queriesTemplate: "foo=bar,baz=ding",
@@ -1135,7 +1136,7 @@ func TestMatcherFunc(t *testing.T) {
 			title:       "MatchFunc route, match",
 			route:       new(Route).MatcherFunc(m),
 			request:     newRequest("GET", "http://aaa.bbb.ccc"),
-			vars:        map[string]string{},
+			vars:        nil,
 			host:        "",
 			path:        "",
 			shouldMatch: true,
@@ -1144,7 +1145,7 @@ func TestMatcherFunc(t *testing.T) {
 			title:       "MatchFunc route, non-match",
 			route:       new(Route).MatcherFunc(m),
 			request:     newRequest("GET", "http://aaa.222.ccc"),
-			vars:        map[string]string{},
+			vars:        nil,
 			host:        "",
 			path:        "",
 			shouldMatch: false,
@@ -1245,7 +1246,7 @@ func TestSubRouter(t *testing.T) {
 		{
 			route:        subrouter3.Path("/"),
 			request:      newRequest("GET", "http://localhost/foo/"),
-			vars:         map[string]string{},
+			vars:         nil,
 			host:         "",
 			path:         "/foo/",
 			pathTemplate: `/foo/`,
@@ -1254,7 +1255,7 @@ func TestSubRouter(t *testing.T) {
 		{
 			route:        subrouter3.Path(""),
 			request:      newRequest("GET", "http://localhost/foo"),
-			vars:         map[string]string{},
+			vars:         nil,
 			host:         "",
 			path:         "/foo",
 			pathTemplate: `/foo`,
@@ -1264,7 +1265,7 @@ func TestSubRouter(t *testing.T) {
 		{
 			route:        subrouter4.Path("/"),
 			request:      newRequest("GET", "http://localhost/foo/bar/"),
-			vars:         map[string]string{},
+			vars:         nil,
 			host:         "",
 			path:         "/foo/bar/",
 			pathTemplate: `/foo/bar/`,
@@ -1273,7 +1274,7 @@ func TestSubRouter(t *testing.T) {
 		{
 			route:        subrouter4.Path(""),
 			request:      newRequest("GET", "http://localhost/foo/bar"),
-			vars:         map[string]string{},
+			vars:         nil,
 			host:         "",
 			path:         "/foo/bar",
 			pathTemplate: `/foo/bar`,
@@ -1301,7 +1302,7 @@ func TestSubRouter(t *testing.T) {
 			title:        "Mismatch method specified on parent route",
 			route:        new(Route).Methods("POST").PathPrefix("/foo").Subrouter().Path("/"),
 			request:      newRequest("GET", "http://localhost/foo/"),
-			vars:         map[string]string{},
+			vars:         nil,
 			host:         "",
 			path:         "/foo/",
 			pathTemplate: `/foo/`,
@@ -1311,7 +1312,7 @@ func TestSubRouter(t *testing.T) {
 			title:        "Match method specified on parent route",
 			route:        new(Route).Methods("POST").PathPrefix("/foo").Subrouter().Path("/"),
 			request:      newRequest("POST", "http://localhost/foo/"),
-			vars:         map[string]string{},
+			vars:         nil,
 			host:         "",
 			path:         "/foo/",
 			pathTemplate: `/foo/`,
@@ -1321,7 +1322,7 @@ func TestSubRouter(t *testing.T) {
 			title:        "Mismatch scheme specified on parent route",
 			route:        new(Route).Schemes("https").Subrouter().PathPrefix("/"),
 			request:      newRequest("GET", "http://localhost/"),
-			vars:         map[string]string{},
+			vars:         nil,
 			host:         "",
 			path:         "/",
 			pathTemplate: `/`,
@@ -1331,7 +1332,7 @@ func TestSubRouter(t *testing.T) {
 			title:        "Match scheme specified on parent route",
 			route:        new(Route).Schemes("http").Subrouter().PathPrefix("/"),
 			request:      newRequest("GET", "http://localhost/"),
-			vars:         map[string]string{},
+			vars:         nil,
 			host:         "",
 			path:         "/",
 			pathTemplate: `/`,
@@ -1341,7 +1342,7 @@ func TestSubRouter(t *testing.T) {
 			title:        "No match header specified on parent route",
 			route:        new(Route).Headers("X-Forwarded-Proto", "https").Subrouter().PathPrefix("/"),
 			request:      newRequest("GET", "http://localhost/"),
-			vars:         map[string]string{},
+			vars:         nil,
 			host:         "",
 			path:         "/",
 			pathTemplate: `/`,
@@ -1351,7 +1352,7 @@ func TestSubRouter(t *testing.T) {
 			title:        "Header mismatch value specified on parent route",
 			route:        new(Route).Headers("X-Forwarded-Proto", "https").Subrouter().PathPrefix("/"),
 			request:      newRequestWithHeaders("GET", "http://localhost/", "X-Forwarded-Proto", "http"),
-			vars:         map[string]string{},
+			vars:         nil,
 			host:         "",
 			path:         "/",
 			pathTemplate: `/`,
@@ -1361,7 +1362,7 @@ func TestSubRouter(t *testing.T) {
 			title:        "Header match value specified on parent route",
 			route:        new(Route).Headers("X-Forwarded-Proto", "https").Subrouter().PathPrefix("/"),
 			request:      newRequestWithHeaders("GET", "http://localhost/", "X-Forwarded-Proto", "https"),
-			vars:         map[string]string{},
+			vars:         nil,
 			host:         "",
 			path:         "/",
 			pathTemplate: `/`,
@@ -1371,7 +1372,7 @@ func TestSubRouter(t *testing.T) {
 			title:        "Query specified on parent route not present",
 			route:        new(Route).Headers("key", "foobar").Subrouter().PathPrefix("/"),
 			request:      newRequest("GET", "http://localhost/"),
-			vars:         map[string]string{},
+			vars:         nil,
 			host:         "",
 			path:         "/",
 			pathTemplate: `/`,
@@ -1381,7 +1382,7 @@ func TestSubRouter(t *testing.T) {
 			title:        "Query mismatch value specified on parent route",
 			route:        new(Route).Queries("key", "foobar").Subrouter().PathPrefix("/"),
 			request:      newRequest("GET", "http://localhost/?key=notfoobar"),
-			vars:         map[string]string{},
+			vars:         nil,
 			host:         "",
 			path:         "/",
 			pathTemplate: `/`,
@@ -1391,7 +1392,7 @@ func TestSubRouter(t *testing.T) {
 			title:        "Query match value specified on subroute",
 			route:        new(Route).Queries("key", "foobar").Subrouter().PathPrefix("/"),
 			request:      newRequest("GET", "http://localhost/?key=foobar"),
-			vars:         map[string]string{},
+			vars:         nil,
 			host:         "",
 			path:         "/",
 			pathTemplate: `/`,
@@ -1472,7 +1473,7 @@ func TestStrictSlash(t *testing.T) {
 			title:          "Redirect path without slash",
 			route:          r.NewRoute().Path("/111/"),
 			request:        newRequest("GET", "http://localhost/111"),
-			vars:           map[string]string{},
+			vars:           nil,
 			host:           "",
 			path:           "/111/",
 			shouldMatch:    true,
@@ -1482,7 +1483,7 @@ func TestStrictSlash(t *testing.T) {
 			title:          "Do not redirect path with slash",
 			route:          r.NewRoute().Path("/111/"),
 			request:        newRequest("GET", "http://localhost/111/"),
-			vars:           map[string]string{},
+			vars:           nil,
 			host:           "",
 			path:           "/111/",
 			shouldMatch:    true,
@@ -1492,7 +1493,7 @@ func TestStrictSlash(t *testing.T) {
 			title:          "Redirect path with slash",
 			route:          r.NewRoute().Path("/111"),
 			request:        newRequest("GET", "http://localhost/111/"),
-			vars:           map[string]string{},
+			vars:           nil,
 			host:           "",
 			path:           "/111",
 			shouldMatch:    true,
@@ -1502,7 +1503,7 @@ func TestStrictSlash(t *testing.T) {
 			title:          "Do not redirect path without slash",
 			route:          r.NewRoute().Path("/111"),
 			request:        newRequest("GET", "http://localhost/111"),
-			vars:           map[string]string{},
+			vars:           nil,
 			host:           "",
 			path:           "/111",
 			shouldMatch:    true,
@@ -1512,7 +1513,7 @@ func TestStrictSlash(t *testing.T) {
 			title:          "Propagate StrictSlash to subrouters",
 			route:          r.NewRoute().PathPrefix("/static/").Subrouter().Path("/images/"),
 			request:        newRequest("GET", "http://localhost/static/images"),
-			vars:           map[string]string{},
+			vars:           nil,
 			host:           "",
 			path:           "/static/images/",
 			shouldMatch:    true,
@@ -1522,7 +1523,7 @@ func TestStrictSlash(t *testing.T) {
 			title:          "Ignore StrictSlash for path prefix",
 			route:          r.NewRoute().PathPrefix("/static/"),
 			request:        newRequest("GET", "http://localhost/static/logo.png"),
-			vars:           map[string]string{},
+			vars:           nil,
 			host:           "",
 			path:           "/static/",
 			shouldMatch:    true,
@@ -1765,6 +1766,73 @@ func TestPanicOnCapturingGroups(t *testing.T) {
 		}
 	}()
 	NewRouter().NewRoute().Path("/{type:(promo|special)}/{promoId}.json")
+}
+
+func TestRouterInContext(t *testing.T) {
+	router := NewRouter()
+	router.HandleFunc("/r1", func(w http.ResponseWriter, r *http.Request) {
+		contextRouter := CurrentRouter(r)
+		if contextRouter == nil {
+			t.Fatal("Router not found in context")
+			return
+		}
+
+		route := contextRouter.Get("r2")
+		if route == nil {
+			t.Fatal("Route with name not found")
+			return
+		}
+
+		url, err := route.URL()
+		if err != nil {
+			t.Fatal("Error while getting url for r2: ", err)
+			return
+		}
+
+		_, err = w.Write([]byte(url.String()))
+		if err != nil {
+			t.Fatalf("Failed writing HTTP response: %v", err)
+		}
+	}).Name("r1")
+
+	noRouterMsg := []byte("no-router")
+	haveRouterMsg := []byte("have-router")
+	router.HandleFunc("/r2", func(w http.ResponseWriter, r *http.Request) {
+		var msg []byte
+
+		contextRouter := CurrentRouter(r)
+		if contextRouter == nil {
+			msg = noRouterMsg
+		} else {
+			msg = haveRouterMsg
+		}
+
+		_, err := w.Write(msg)
+		if err != nil {
+			t.Fatalf("Failed writing HTTP response: %v", err)
+		}
+	}).Name("r2")
+
+	t.Run("router in request context get route by name", func(t *testing.T) {
+		rw := NewRecorder()
+		req := newRequest("GET", "/r1")
+
+		router.ServeHTTP(rw, req)
+		if !bytes.Equal(rw.Body.Bytes(), []byte("/r2")) {
+			t.Fatalf("Expected output to be '/r1' but got '%s'", rw.Body.String())
+		}
+	})
+
+	t.Run("omit router from request context", func(t *testing.T) {
+		rw := NewRecorder()
+		req := newRequest("GET", "/r2")
+
+		router.OmitRouterFromContext(true)
+		router.ServeHTTP(rw, req)
+		if !bytes.Equal(rw.Body.Bytes(), noRouterMsg) {
+			t.Fatal("Router not omitted from context")
+		}
+	})
 }
 
 // ----------------------------------------------------------------------------
@@ -2068,6 +2136,71 @@ func TestNoMatchMethodErrorHandler(t *testing.T) {
 	}
 }
 
+func TestMultipleDefinitionOfSamePathWithDifferentMethods(t *testing.T) {
+	emptyHandler := func(w http.ResponseWriter, r *http.Request) {}
+
+	r := NewRouter()
+	r.HandleFunc("/api", emptyHandler).Methods("POST")
+	r.HandleFunc("/api", emptyHandler).Queries("time", "{time:[0-9]+}").Methods("GET")
+
+	t.Run("Post Method should be matched properly", func(t *testing.T) {
+		req, _ := http.NewRequest("POST", "http://localhost/api", nil)
+		match := new(RouteMatch)
+		matched := r.Match(req, match)
+		if !matched {
+			t.Error("Should have matched route for methods")
+		}
+		if match.MatchErr != nil {
+			t.Error("Should not have any matching error. Found:", match.MatchErr)
+		}
+	})
+
+	t.Run("Get Method with invalid query value should not match", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "http://localhost/api?time=-4", nil)
+		match := new(RouteMatch)
+		matched := r.Match(req, match)
+		if matched {
+			t.Error("Should not have matched route for methods")
+		}
+		if match.MatchErr != ErrNotFound {
+			t.Error("Should have ErrNotFound error. Found:", match.MatchErr)
+		}
+	})
+
+	t.Run("A mismach method of a valid path should return ErrMethodMismatch", func(t *testing.T) {
+		r := NewRouter()
+		r.HandleFunc("/api2", emptyHandler).Methods("POST")
+		req, _ := http.NewRequest("GET", "http://localhost/api2", nil)
+		match := new(RouteMatch)
+		matched := r.Match(req, match)
+		if matched {
+			t.Error("Should not have matched route for methods")
+		}
+		if match.MatchErr != ErrMethodMismatch {
+			t.Error("Should have ErrMethodMismatch error. Found:", match.MatchErr)
+		}
+	})
+
+}
+
+func TestMultipleDefinitionOfSamePathWithDifferentQueries(t *testing.T) {
+	emptyHandler := func(w http.ResponseWriter, r *http.Request) {}
+
+	r := NewRouter()
+	r.HandleFunc("/api", emptyHandler).Queries("foo", "{foo:[0-9]+}").Methods(http.MethodGet)
+	r.HandleFunc("/api", emptyHandler).Queries("bar", "{bar:[0-9]+}").Methods(http.MethodGet)
+
+	req := newRequest(http.MethodGet, "/api?bar=4")
+	match := new(RouteMatch)
+	matched := r.Match(req, match)
+	if !matched {
+		t.Error("Should have matched route for methods")
+	}
+	if match.MatchErr != nil {
+		t.Error("Should have no error. Found:", match.MatchErr)
+	}
+}
+
 func TestErrMatchNotFound(t *testing.T) {
 	emptyHandler := func(w http.ResponseWriter, r *http.Request) {}
 
@@ -2136,7 +2269,10 @@ type methodsSubrouterTest struct {
 // methodHandler writes the method string in response.
 func methodHandler(method string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(method))
+		_, err := w.Write([]byte(method))
+		if err != nil {
+			log.Printf("Failed writing HTTP response: %v", err)
+		}
 	}
 }
 
@@ -2733,6 +2869,23 @@ func TestMethodNotAllowed(t *testing.T) {
 	}
 }
 
+func TestMethodNotAllowedSubrouterWithSeveralRoutes(t *testing.T) {
+	handler := func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }
+
+	router := NewRouter()
+	subrouter := router.PathPrefix("/v1").Subrouter()
+	subrouter.HandleFunc("/api", handler).Methods(http.MethodGet)
+	subrouter.HandleFunc("/api/{id}", handler).Methods(http.MethodGet)
+
+	w := NewRecorder()
+	req := newRequest(http.MethodPut, "/v1/api")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("Expected status code 405 (got %d)", w.Code)
+	}
+}
+
 type customMethodNotAllowedHandler struct {
 	msg string
 }
@@ -2778,7 +2931,7 @@ func TestSubrouterCustomMethodNotAllowed(t *testing.T) {
 				tt.Errorf("Expected status code 405 (got %d)", w.Code)
 			}
 
-			b, err := ioutil.ReadAll(w.Body)
+			b, err := io.ReadAll(w.Body)
 			if err != nil {
 				tt.Errorf("failed to read body: %v", err)
 			}
@@ -2828,6 +2981,162 @@ func TestContextMiddleware(t *testing.T) {
 	r.ServeHTTP(rec, req)
 }
 
+func TestGetVarNames(t *testing.T) {
+	r := NewRouter()
+
+	route := r.Host("{domain}").
+		Path("/{group}/{item_id}").
+		Queries("some_data1", "{some_data1}").
+		Queries("some_data2_and_3", "{some_data2}.{some_data3}")
+
+	// Order of vars in the slice is not guaranteed, so just check for existence
+	expected := map[string]bool{
+		"domain":     true,
+		"group":      true,
+		"item_id":    true,
+		"some_data1": true,
+		"some_data2": true,
+		"some_data3": true,
+	}
+
+	varNames, err := route.GetVarNames()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(varNames) != len(expected) {
+		t.Fatalf("expected %d names, got %d", len(expected), len(varNames))
+	}
+
+	for _, varName := range varNames {
+		if !expected[varName] {
+			t.Fatalf("got unexpected %s", varName)
+		}
+	}
+}
+
+func getPopulateContextTestCases() []struct {
+	name                 string
+	path                 string
+	omitRouteFromContext bool
+	wantVar              string
+	wantStaticRoute      bool
+	wantDynamicRoute     bool
+} {
+	return []struct {
+		name                 string
+		path                 string
+		omitRouteFromContext bool
+		wantVar              string
+		wantStaticRoute      bool
+		wantDynamicRoute     bool
+	}{
+		{
+			name:            "no populated vars",
+			path:            "/static",
+			wantVar:         "",
+			wantStaticRoute: true,
+		},
+		{
+			name:             "empty var",
+			path:             "/dynamic/",
+			wantVar:          "",
+			wantDynamicRoute: true,
+		},
+		{
+			name:             "populated vars",
+			path:             "/dynamic/foo",
+			wantVar:          "foo",
+			wantDynamicRoute: true,
+		},
+		{
+			name:                 "omit route /static",
+			path:                 "/static",
+			omitRouteFromContext: true,
+			wantVar:              "",
+			wantStaticRoute:      false,
+		},
+		{
+			name:                 "omit route /dynamic",
+			path:                 "/dynamic/",
+			omitRouteFromContext: true,
+			wantVar:              "",
+			wantDynamicRoute:     false,
+		},
+	}
+}
+
+func TestPopulateContext(t *testing.T) {
+	testCases := getPopulateContextTestCases()
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			matched := false
+			r := NewRouter()
+			r.OmitRouteFromContext(tc.omitRouteFromContext)
+			var static *Route
+			var dynamic *Route
+			fn := func(w http.ResponseWriter, r *http.Request) {
+				matched = true
+				if got := Vars(r)["x"]; got != tc.wantVar {
+					t.Fatalf("wantVar=%q, got=%q", tc.wantVar, got)
+				}
+				switch {
+				case tc.wantDynamicRoute:
+					r2 := CurrentRoute(r)
+					if r2 != dynamic || r2.GetName() != "dynamic" {
+						t.Fatalf("expected dynmic route in ctx, got %v", r2)
+					}
+				case tc.wantStaticRoute:
+					r2 := CurrentRoute(r)
+					if r2 != static || r2.GetName() != "static" {
+						t.Fatalf("expected static route in ctx, got %v", r2)
+					}
+				default:
+					if r2 := CurrentRoute(r); r2 != nil {
+						t.Fatalf("expected no route in ctx, got %v", r2)
+					}
+				}
+				w.WriteHeader(http.StatusNoContent)
+			}
+			static = r.Name("static").Path("/static").HandlerFunc(fn)
+			dynamic = r.Name("dynamic").Path("/dynamic/{x:.*}").HandlerFunc(fn)
+			req := newRequest(http.MethodGet, "http://localhost"+tc.path)
+			rec := NewRecorder()
+			r.ServeHTTP(rec, req)
+			if !matched {
+				t.Fatal("Expected route to match")
+			}
+		})
+	}
+}
+
+func BenchmarkPopulateContext(b *testing.B) {
+	testCases := getPopulateContextTestCases()
+	for _, tc := range testCases {
+		b.Run(tc.name, func(b *testing.B) {
+			matched := false
+			r := NewRouter()
+			r.OmitRouteFromContext(tc.omitRouteFromContext)
+			fn := func(w http.ResponseWriter, r *http.Request) {
+				matched = true
+				w.WriteHeader(http.StatusNoContent)
+			}
+			r.Name("static").Path("/static").HandlerFunc(fn)
+			r.Name("dynamic").Path("/dynamic/{x:.*}").HandlerFunc(fn)
+			req := newRequest(http.MethodGet, "http://localhost"+tc.path)
+			rec := NewRecorder()
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				r.ServeHTTP(rec, req)
+			}
+			if !matched {
+				b.Fatal("Expected route to match")
+			}
+		})
+	}
+}
+
 // mapToPairs converts a string map to a slice of string pairs
 func mapToPairs(m map[string]string) []string {
 	var i int
@@ -2859,7 +3168,10 @@ func stringMapEqual(m1, m2 map[string]string) bool {
 // http.ResponseWriter.
 func stringHandler(s string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(s))
+		_, err := w.Write([]byte(s))
+		if err != nil {
+			log.Printf("Failed writing HTTP response: %v", err)
+		}
 	}
 }
 
@@ -2892,7 +3204,10 @@ func newRequest(method, url string) *http.Request {
 
 	// Simulate writing to wire
 	var buff bytes.Buffer
-	req.Write(&buff)
+	err = req.Write(&buff)
+	if err != nil {
+		log.Printf("Failed writing HTTP request: %v", err)
+	}
 	ioreader := bufio.NewReader(&buff)
 
 	// Parse request off of 'wire'

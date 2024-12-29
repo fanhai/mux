@@ -2,6 +2,7 @@ package mux
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"testing"
 )
@@ -41,6 +42,17 @@ func TestMiddlewareAdd(t *testing.T) {
 	router.Use(banalMw)
 	if len(router.middlewares) != 3 {
 		t.Fatal("Middleware function was not added correctly")
+	}
+
+	route := router.HandleFunc("/route", dummyHandler)
+	route.useInterface(mw)
+	if len(route.middlewares) != 1 {
+		t.Fatal("Route middleware function was not added correctly")
+	}
+
+	route.Use(banalMw)
+	if len(route.middlewares) != 2 {
+		t.Fatal("Route middleware function was not added correctly")
 	}
 }
 
@@ -83,6 +95,24 @@ func TestMiddleware(t *testing.T) {
 		router.ServeHTTP(rw, req)
 		if mw.timesCalled != 3 {
 			t.Fatalf("Expected %d calls, but got only %d", 3, mw.timesCalled)
+		}
+	})
+
+	t.Run("regular call using route middleware func", func(t *testing.T) {
+		router.HandleFunc("/route", dummyHandler).Use(mw.Middleware)
+		req = newRequest("GET", "/route")
+		router.ServeHTTP(rw, req)
+		if mw.timesCalled != 6 {
+			t.Fatalf("Expected %d calls, but got only %d", 6, mw.timesCalled)
+		}
+	})
+
+	t.Run("regular call using route middleware interface", func(t *testing.T) {
+		router.HandleFunc("/route", dummyHandler).useInterface(mw)
+		req = newRequest("GET", "/route")
+		router.ServeHTTP(rw, req)
+		if mw.timesCalled != 9 {
+			t.Fatalf("Expected %d calls, but got only %d", 9, mw.timesCalled)
 		}
 	})
 }
@@ -156,10 +186,15 @@ func TestMiddlewareExecution(t *testing.T) {
 	mwStr := []byte("Middleware\n")
 	handlerStr := []byte("Logic\n")
 
+	handlerFunc := func(w http.ResponseWriter, e *http.Request) {
+		_, err := w.Write(handlerStr)
+		if err != nil {
+			t.Fatalf("Failed writing HTTP response: %v", err)
+		}
+	}
+
 	router := NewRouter()
-	router.HandleFunc("/", func(w http.ResponseWriter, e *http.Request) {
-		w.Write(handlerStr)
-	})
+	router.HandleFunc("/", handlerFunc)
 
 	t.Run("responds normally without middleware", func(t *testing.T) {
 		rw := NewRecorder()
@@ -178,13 +213,39 @@ func TestMiddlewareExecution(t *testing.T) {
 
 		router.Use(func(h http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Write(mwStr)
+				_, err := w.Write(mwStr)
+				if err != nil {
+					t.Fatalf("Failed writing HTTP response: %v", err)
+				}
 				h.ServeHTTP(w, r)
 			})
 		})
 
 		router.ServeHTTP(rw, req)
 		if !bytes.Equal(rw.Body.Bytes(), append(mwStr, handlerStr...)) {
+			t.Fatal("Middleware + handler response is not what it should be")
+		}
+	})
+
+	t.Run("responds with handler, middleware and route middleware response", func(t *testing.T) {
+		routeMwStr := []byte("Route Middleware\n")
+		rw := NewRecorder()
+		req := newRequest("GET", "/route")
+
+		router.HandleFunc("/route", handlerFunc).Use(func(h http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, err := w.Write(routeMwStr)
+				if err != nil {
+					t.Fatalf("Failed writing HTTP response: %v", err)
+				}
+				h.ServeHTTP(w, r)
+			})
+		})
+
+		router.ServeHTTP(rw, req)
+		expectedString := append(append(mwStr, routeMwStr...), handlerStr...)
+		if !bytes.Equal(rw.Body.Bytes(), expectedString) {
+			fmt.Println(rw.Body.String())
 			t.Fatal("Middleware + handler response is not what it should be")
 		}
 	})
@@ -196,11 +257,17 @@ func TestMiddlewareNotFound(t *testing.T) {
 
 	router := NewRouter()
 	router.HandleFunc("/", func(w http.ResponseWriter, e *http.Request) {
-		w.Write(handlerStr)
+		_, err := w.Write(handlerStr)
+		if err != nil {
+			t.Fatalf("Failed writing HTTP response: %v", err)
+		}
 	})
 	router.Use(func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Write(mwStr)
+			_, err := w.Write(mwStr)
+			if err != nil {
+				t.Fatalf("Failed writing HTTP response: %v", err)
+			}
 			h.ServeHTTP(w, r)
 		})
 	})
@@ -221,7 +288,10 @@ func TestMiddlewareNotFound(t *testing.T) {
 		req := newRequest("GET", "/notfound")
 
 		router.NotFoundHandler = http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-			rw.Write([]byte("Custom 404 handler"))
+			_, err := rw.Write([]byte("Custom 404 handler"))
+			if err != nil {
+				t.Fatalf("Failed writing HTTP response: %v", err)
+			}
 		})
 		router.ServeHTTP(rw, req)
 
@@ -237,12 +307,18 @@ func TestMiddlewareMethodMismatch(t *testing.T) {
 
 	router := NewRouter()
 	router.HandleFunc("/", func(w http.ResponseWriter, e *http.Request) {
-		w.Write(handlerStr)
+		_, err := w.Write(handlerStr)
+		if err != nil {
+			t.Fatalf("Failed writing HTTP response: %v", err)
+		}
 	}).Methods("GET")
 
 	router.Use(func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Write(mwStr)
+			_, err := w.Write(mwStr)
+			if err != nil {
+				t.Fatalf("Failed writing HTTP response: %v", err)
+			}
 			h.ServeHTTP(w, r)
 		})
 	})
@@ -262,7 +338,10 @@ func TestMiddlewareMethodMismatch(t *testing.T) {
 		req := newRequest("POST", "/")
 
 		router.MethodNotAllowedHandler = http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-			rw.Write([]byte("Method not allowed"))
+			_, err := rw.Write([]byte("Method not allowed"))
+			if err != nil {
+				t.Fatalf("Failed writing HTTP response: %v", err)
+			}
 		})
 		router.ServeHTTP(rw, req)
 
@@ -278,17 +357,26 @@ func TestMiddlewareNotFoundSubrouter(t *testing.T) {
 
 	router := NewRouter()
 	router.HandleFunc("/", func(w http.ResponseWriter, e *http.Request) {
-		w.Write(handlerStr)
+		_, err := w.Write(handlerStr)
+		if err != nil {
+			t.Fatalf("Failed writing HTTP response: %v", err)
+		}
 	})
 
 	subrouter := router.PathPrefix("/sub/").Subrouter()
 	subrouter.HandleFunc("/", func(w http.ResponseWriter, e *http.Request) {
-		w.Write(handlerStr)
+		_, err := w.Write(handlerStr)
+		if err != nil {
+			t.Fatalf("Failed writing HTTP response: %v", err)
+		}
 	})
 
 	router.Use(func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Write(mwStr)
+			_, err := w.Write(mwStr)
+			if err != nil {
+				t.Fatalf("Failed writing HTTP response: %v", err)
+			}
 			h.ServeHTTP(w, r)
 		})
 	})
@@ -308,7 +396,10 @@ func TestMiddlewareNotFoundSubrouter(t *testing.T) {
 		req := newRequest("GET", "/sub/notfound")
 
 		subrouter.NotFoundHandler = http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-			rw.Write([]byte("Custom 404 handler"))
+			_, err := rw.Write([]byte("Custom 404 handler"))
+			if err != nil {
+				t.Fatalf("Failed writing HTTP response: %v", err)
+			}
 		})
 		router.ServeHTTP(rw, req)
 
@@ -324,17 +415,26 @@ func TestMiddlewareMethodMismatchSubrouter(t *testing.T) {
 
 	router := NewRouter()
 	router.HandleFunc("/", func(w http.ResponseWriter, e *http.Request) {
-		w.Write(handlerStr)
+		_, err := w.Write(handlerStr)
+		if err != nil {
+			t.Fatalf("Failed writing HTTP response: %v", err)
+		}
 	})
 
 	subrouter := router.PathPrefix("/sub/").Subrouter()
 	subrouter.HandleFunc("/", func(w http.ResponseWriter, e *http.Request) {
-		w.Write(handlerStr)
+		_, err := w.Write(handlerStr)
+		if err != nil {
+			t.Fatalf("Failed writing HTTP response: %v", err)
+		}
 	}).Methods("GET")
 
 	router.Use(func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Write(mwStr)
+			_, err := w.Write(mwStr)
+			if err != nil {
+				t.Fatalf("Failed writing HTTP response: %v", err)
+			}
 			h.ServeHTTP(w, r)
 		})
 	})
@@ -354,7 +454,10 @@ func TestMiddlewareMethodMismatchSubrouter(t *testing.T) {
 		req := newRequest("POST", "/sub/")
 
 		router.MethodNotAllowedHandler = http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-			rw.Write([]byte("Method not allowed"))
+			_, err := rw.Write([]byte("Method not allowed"))
+			if err != nil {
+				t.Fatalf("Failed writing HTTP response: %v", err)
+			}
 		})
 		router.ServeHTTP(rw, req)
 
@@ -508,7 +611,10 @@ func TestMiddlewareOnMultiSubrouter(t *testing.T) {
 	secondSubRouter := router.PathPrefix("/").Subrouter()
 
 	router.NotFoundHandler = http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-		rw.Write([]byte(notFound))
+		_, err := rw.Write([]byte(notFound))
+		if err != nil {
+			t.Fatalf("Failed writing HTTP response: %v", err)
+		}
 	})
 
 	firstSubRouter.HandleFunc("/first", func(w http.ResponseWriter, r *http.Request) {
@@ -521,14 +627,20 @@ func TestMiddlewareOnMultiSubrouter(t *testing.T) {
 
 	firstSubRouter.Use(func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte(first))
+			_, err := w.Write([]byte(first))
+			if err != nil {
+				t.Fatalf("Failed writing HTTP response: %v", err)
+			}
 			h.ServeHTTP(w, r)
 		})
 	})
 
 	secondSubRouter.Use(func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte(second))
+			_, err := w.Write([]byte(second))
+			if err != nil {
+				t.Fatalf("Failed writing HTTP response: %v", err)
+			}
 			h.ServeHTTP(w, r)
 		})
 	})
